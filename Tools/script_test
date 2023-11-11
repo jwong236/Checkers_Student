@@ -1,0 +1,26 @@
+#!/bin/bash
+
+win_count=0
+loss_count=0
+tie_count=0
+
+for i in {1..10}; do
+   result=$(python3 AI_Runner.py 8 8 3 l ./Sample_AIs/Random_AI/main.py ../src/checkers-python/main.py)
+
+   echo "${result: -6}"
+   
+    if [[ ${result: -6} == *"2 wins"* ]]; then
+        ((win_count++))
+    elif [[ ${result: -6} == *"1 wins"* ]]; then
+        ((loss_count++))
+    elif [[ ${result: -3} == *"Tie"* ]]; then
+        ((tie_count++))
+    fi
+
+   echo "Run $i completed"
+done
+
+echo "Total Wins: $win_count"
+echo "Total Losses: $loss_count"
+echo "Total Ties: $tie_count"
+
