@@ -6,7 +6,8 @@ import math
 #Students can modify anything except the class name and exisiting functions and varibles.
 class StudentAI():
     class Node():
-        def __init__(self, parent):
+        def __init__(self, move, parent = None):
+            self.move = move
             self.children = []
             self.parent = parent
             self.win_count = 0
@@ -52,7 +53,7 @@ class StudentAI():
         self.opponent = {1:2,2:1}
         self.color = 2
 
-        self.tree = self.Node(None, None)
+        self.root = self.Node(None)
     def get_move(self,move):
         """
         Selects and executes a move for the AI player.
@@ -82,17 +83,24 @@ class StudentAI():
         else:
             self.color = 1
 
-        moves = self.board.get_all_possible_moves(self.color)
-
         # Initialize tree, begin with the root node representing the current state of the board
-                
+        # Get all possible moves, get a set of root's current children, and add moves to tree only if it isn't already there
+        moves = self.board.get_all_possible_moves(self.color)
+        existing_moves = set()
+        for child in self.root.children:
+            existing_moves.add(str(child.move))
+        for move in moves:
+            if str(move) not in existing_moves: # Note: child.move and move must be compared in their string representation as they have different addresses
+                self.root.add_child(self.Node(move, self.root))
+    
         # Selection Phase:
         #     Start from the root and repeatedly select child
         #     On the first iteration, select each child once
         #     After the first iteration, select each child based on some heuristic
         #     Heuristic can be either
-        #         1.Upper Confidence Bound formula
+        #         1. Upper Confidence Bound formula
         #         2. Random (Apparently this is not as effective)
+        selected_node = self.select_node(self.root.children) # TODO
 
         # Expansion Phase:
         #     If the selected node doesn't end the game and has unexplored moves, expand it by creating a new child node of this selected node
@@ -100,24 +108,33 @@ class StudentAI():
         #         1. Random
         #         2. Based on whichever is not explored yet
         #         3. Random and based on whichever is not explored yet (Apparently this is effective)
+        expanded_node = self.expand_node(selected_node) # TODO
 
         # Simulation Phase:
         #     Simulate ONE game until completion starting from the expanded node by choosing moves for both players
         #     The choice of which moves to choose can be
         #         1. Random
         #         2. Idk
+        simulation_route = self.simulate_game(expanded_node) # TODO
 
         # Backpropagation Phase:
         #     After the simulation reaches a terminal state, backpropagate the result up through the tree along the path taken during the selection phase. Update the win/loss statistics and visit count of each node on this path
         #     Repeat process for a predetermined number of iterations
         #     Calculate the best Upper Confidence Bound score and choose the highest
+        self.propagate_back(simulation_route) # TODO
 
-
+        # Finalize move choice:
+        #     Calculate ucb of each root's child nodes and choose the largest
+        #     Move the tree root to it's subtree to reflect current board state and prune unreachable tree board states
+        #     Submit move
+        move = self.choose_move(self.root.children) # TODO
+        self.root = self.Node(move)
+        self.root.parent = None
+        self.board.make_move(move, self.color)
         return move
+    
 
-
-
-"""
+    """
         # Execute opponent's move onto the board, but if 
         if len(move) != 0:
             self.board.make_move(move,self.opponent[self.color])
