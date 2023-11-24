@@ -54,6 +54,94 @@ class StudentAI():
         self.color = 2
 
         self.root = self.Node(None)
+    
+    def select_node(self, children):
+        """
+        Selects a child node from the given list of children based on a specified heuristic.
+
+        Start from the root and repeatedly select child
+        On the first iteration, select each child once
+        After the first iteration, select each child based on some heuristic
+        Heuristic can be either
+            1. Upper Confidence Bound formula
+            2. Random (Apparently this is not as effective)
+
+        Parameters:
+            children (list): A list of child nodes to select from.
+
+        Returns:
+            Node: The selected child node.
+        """
+        return children(randint(0,len(children)-1))
+    
+    def expand_node(self, selected_node):
+        """
+        Expands the given node by adding a new child node to it.
+
+        If the selected node doesn't end the game and has unexplored moves, expand it by creating a new child node of this selected node
+        The choice of which child node to choose can be:
+            1. Random
+            2. Based on whichever is not explored yet
+            3. Random and based on whichever is not explored yet (Apparently this is effective)
+
+        Parameters:
+            selected_node (Node): The node to be expanded.
+
+        Returns:
+            Node: The newly created child node.
+        """
+        expanded_node = self.Node(None, selected_node)
+        selected_node.add_child(expanded_node)
+        return expanded_node
+        
+    def simulate_game(self, expanded_node):
+        """
+        Simulates a game starting from the given node until a terminal state is reached.
+
+        Simulate ONE game until completion starting from the expanded node by choosing moves for both players
+        The choice of which moves to choose can be
+            1. Random
+            2. Idk
+
+        Parameters:
+            expanded_node (Node): The node from which the game simulation starts.
+
+        Returns:
+            list: A list representing the simulation route, containing tuples of nodes and their parents.
+        """
+        simulation_route = [(expanded_node, expanded_node.parent)]
+        return simulation_route
+        
+    def propagate_back(self, simulation_route):
+        """
+        Backpropagates the simulation result through the tree.
+
+        After the simulation reaches a terminal state, backpropagate the result up through the tree along the path taken during the selection phase. Update the win/loss statistics and visit count of each node on this path
+        Repeat process for a predetermined number of iterations
+        Calculate the best Upper Confidence Bound score and choose the highest
+
+        Parameters:
+            simulation_route (list): The path of nodes taken during the simulation, represented as a list.
+        """
+        return
+        
+    def choose_move(self, children):
+        """
+        Chooses the best move to play from the given list of child nodes.
+
+        Calculate ucb of each root's child nodes and choose the largest
+        Move the tree root to it's subtree to reflect current board state and prune unreachable tree board states
+        Submit move
+
+        Parameters:
+            children (list): A list of child nodes to choose the best move from.
+
+        Returns:
+            Move: The move chosen as the best move to play.
+        """
+        return children[randint(0,len(children)-1)]
+
+
     def get_move(self,move):
         """
         Selects and executes a move for the AI player.
@@ -89,47 +177,32 @@ class StudentAI():
         existing_moves = set()
         for child in self.root.children:
             existing_moves.add(str(child.move))
-        for move in moves:
-            if str(move) not in existing_moves: # Note: child.move and move must be compared in their string representation as they have different addresses
-                self.root.add_child(self.Node(move, self.root))
+        for piece in moves:
+            for move in piece:
+                if str(move) not in existing_moves: # Note: child.move and move must be compared in their string representation as they have different addresses
+                    self.root.add_child(self.Node(move, self.root))
     
         # Selection Phase:
-        #     Start from the root and repeatedly select child
-        #     On the first iteration, select each child once
-        #     After the first iteration, select each child based on some heuristic
-        #     Heuristic can be either
-        #         1. Upper Confidence Bound formula
-        #         2. Random (Apparently this is not as effective)
         selected_node = self.select_node(self.root.children) # TODO
 
         # Expansion Phase:
-        #     If the selected node doesn't end the game and has unexplored moves, expand it by creating a new child node of this selected node
-        #     The choice of which child node to choose can be:
-        #         1. Random
-        #         2. Based on whichever is not explored yet
-        #         3. Random and based on whichever is not explored yet (Apparently this is effective)
         expanded_node = self.expand_node(selected_node) # TODO
 
         # Simulation Phase:
-        #     Simulate ONE game until completion starting from the expanded node by choosing moves for both players
-        #     The choice of which moves to choose can be
-        #         1. Random
-        #         2. Idk
         simulation_route = self.simulate_game(expanded_node) # TODO
 
         # Backpropagation Phase:
-        #     After the simulation reaches a terminal state, backpropagate the result up through the tree along the path taken during the selection phase. Update the win/loss statistics and visit count of each node on this path
-        #     Repeat process for a predetermined number of iterations
-        #     Calculate the best Upper Confidence Bound score and choose the highest
         self.propagate_back(simulation_route) # TODO
 
         # Finalize move choice:
-        #     Calculate ucb of each root's child nodes and choose the largest
-        #     Move the tree root to it's subtree to reflect current board state and prune unreachable tree board states
-        #     Submit move
         move = self.choose_move(self.root.children) # TODO
-        self.root = self.Node(move)
-        self.root.parent = None
+        for child in self.root.children:
+            if str(move) == str(child.move):
+                self.root = child
+                if self.root.parent:
+                    self.root.parent.children = []  # Clear children of the old root
+                    self.root.parent = None  # Remove parent reference from the new root
+                break
         self.board.make_move(move, self.color)
         return move
     
