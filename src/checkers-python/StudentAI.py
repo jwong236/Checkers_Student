@@ -1,10 +1,47 @@
 from random import randint
 from BoardClasses import Move
 from BoardClasses import Board
+import math
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
 class StudentAI():
+    class Node():
+        def __init__(self, parent):
+            self.children = []
+            self.parent = parent
+            self.win_count = 0
+            self.lose_count = 0
+            self.visit_count = 0
 
+        def add_child(self, child_node):
+            """ Adds a child node to this node. """
+            self.children.append(child_node)
+
+        def update_stats(self, win):
+            """ Updates the win/loss statistics of the node."""
+            self.visit_count += 1
+            if win:
+                self.win_count += 1
+            else:
+                self.lose_count += 1
+
+        def calculate_winrate(self):
+            """ Calculates the win rate of the node. """
+            if self.visit_count == 0:
+                return 0
+            return self.win_count / self.visit_count
+
+        def calculate_ucb(self, exploration_param=math.sqrt(2)):
+            """ Calculates the UCB1 value for the node. """
+            if self.visit_count == 0:
+                return float('inf')
+
+            win_rate = self.calculate_winrate()
+            if self.parent is None or self.parent.visit_count == 0:
+                return win_rate
+
+            ucb = win_rate + exploration_param * math.sqrt(math.log(self.parent.visit_count) / self.visit_count)
+            return ucb
     def __init__(self,col,row,p):
         self.col = col
         self.row = row
@@ -48,7 +85,7 @@ class StudentAI():
         moves = self.board.get_all_possible_moves(self.color)
 
         # Initialize tree, begin with the root node representing the current state of the board
-
+                
         # Selection Phase:
         #     Start from the root and repeatedly select child
         #     On the first iteration, select each child once
