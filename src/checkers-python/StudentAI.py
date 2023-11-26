@@ -4,6 +4,14 @@ from BoardClasses import Board
 
 import math
 from copy import deepcopy
+
+import logging
+
+# Basic configuration of the logging system
+logging.basicConfig(level=logging.DEBUG, filename='myapp.log', filemode='w',
+                    format='%(name)s - %(levelname)s - %(message)s')
+
+
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
 class StudentAI():
@@ -45,6 +53,14 @@ class StudentAI():
 
             ucb = win_rate + exploration_param * math.sqrt(math.log(self.parent.visit_count) / self.visit_count)
             return ucb
+        
+        def __str__(self):
+            """ String representation of the Node. """
+            parent_move = self.parent.move if self.parent else None
+            return (f"Node(Move: {self.move}, Parent Move: {parent_move}, "
+                    f"Win Count: {self.win_count}, Lose Count: {self.lose_count}, "
+                    f"Visit Count: {self.visit_count}, Children: {len(self.children)})")
+        
     def __init__(self,col,row,p):
         self.col = col
         self.row = row
@@ -74,6 +90,7 @@ class StudentAI():
         Returns:
             Node: The selected child node.
         """
+        logging.info(f"Current root = {str(self.root)}")
         # Find all unvisited children then select one randomly
         unvisited = [child for child in children if child.visit_count == 0]
         if unvisited:
@@ -106,15 +123,21 @@ class StudentAI():
         Returns:
             Node: The newly created child node.
         """
-        moves = self.board.get_all_possible_moves(self.color)
+        # Create a deep copy of the board and apply the move of the selected node to simulate its state
+        cloned_board = deepcopy(self.board)
+        if selected_node.move:
+            cloned_board.make_move(selected_node.move, self.color)
 
-        # Filter out moves that have already been explored
+        # Get all possible moves from this simulated state
+        simulated_moves = cloned_board.get_all_possible_moves(self.color)
+
+        # Filter out moves that have already been explored from the selected node
         explored_moves = {str(child.move) for child in selected_node.children}
-        unexplored_moves = [move for move in moves if str(move) not in explored_moves]
+        unexplored_moves = [move for sublist in simulated_moves for move in sublist if str(move) not in explored_moves]
 
         # No moves left to explore from this node
         if not unexplored_moves:
-            return None  
+            return None
 
         # Randomly select one of the unexplored moves
         move_to_expand = unexplored_moves[randint(0, len(unexplored_moves) - 1)]
@@ -123,9 +146,9 @@ class StudentAI():
         new_node = self.Node(move_to_expand, selected_node)
         selected_node.add_child(new_node)
 
-        return new_node
+        return new_node, cloned_board
         
-    def simulate_game(self, current_node):
+    def simulate_game(self, current_node, simulated_board):
         """
         Simulates a game starting from the given node until a terminal state is reached.
 
@@ -136,14 +159,13 @@ class StudentAI():
             Node: The last node of the simulation
             win(bool): Returns true if choosing expanded node resulted in a win
         """
-        cloned_board = deepcopy(self.board)
         if current_node.move:
-            cloned_board.make_move(current_node.move, self.color)
+            simulated_board.make_move(current_node.move, self.color)
 
         current_player = self.opponent[self.color]
 
         while True:
-            moves = cloned_board.get_all_possible_moves(current_player)
+            moves = simulated_board.get_all_possible_moves(current_player)
             if not moves:  # No more moves available
                 break
 
@@ -151,7 +173,7 @@ class StudentAI():
             index = randint(0, len(moves) - 1)
             inner_index = randint(0, len(moves[index]) - 1)
             move = moves[index][inner_index]
-            cloned_board.make_move(move, current_player)
+            simulated_board.make_move(move, current_player)
 
             # Create a new node for this move and link it to the current node
             new_node = self.Node(move, current_node)
@@ -159,7 +181,7 @@ class StudentAI():
             current_node = new_node  # Update current node
 
             # Check for win/lose/tie condition
-            if cloned_board.is_win(current_player) != 0:
+            if simulated_board.is_win(current_player) != 0:
                 break
 
             # Switch player
@@ -184,7 +206,7 @@ class StudentAI():
         current_node = start_node
         
         while current_node is not None:
-            self.update_stats(self, outcome)
+            current_node.update_stats(outcome)
             current_node = current_node.parent
         
     def choose_move(self, children):
@@ -262,14 +284,14 @@ class StudentAI():
             selected_node = self.select_node(self.root.children)
 
             # Expansion Phase:
-            expanded_node = self.expand_node(selected_node)
+            expanded_node, expanded_board = self.expand_node(selected_node)
 
             # Simulation Phase:
-            start_node, outcome = self.simulate_game(expanded_node)
+            start_node, outcome = self.simulate_game(expanded_node, expanded_board)
 
             # Backpropagation Phase:
             self.propagate_back(start_node, outcome)
-
+        
         # Finalize move choice:
         move = self.choose_move(self.root.children)
         for child in self.root.children:
@@ -279,6 +301,8 @@ class StudentAI():
                     self.root.parent.children = []  # Clear children of the old root
                     self.root.parent = None  # Remove parent reference from the new root
                 break
+        logging.info(f"Making move {self.root}")
+        logging.info(f"")
         self.board.make_move(move, self.color)
         return move
     
