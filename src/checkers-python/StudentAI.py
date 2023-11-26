@@ -1,7 +1,9 @@
 from random import randint
 from BoardClasses import Move
 from BoardClasses import Board
+
 import math
+from copy import deepcopy
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
 class StudentAI():
@@ -72,7 +74,21 @@ class StudentAI():
         Returns:
             Node: The selected child node.
         """
-        return children(randint(0,len(children)-1))
+        # Find all unvisited children then select one randomly
+        unvisited = [child for child in children if child.visit_count == 0]
+        if unvisited:
+            return unvisited[randint(0, len(unvisited) - 1)]
+
+        # If all children are visited, select the one with the highest UCB1 value
+        best_ucb_value = float('-inf')
+        best_node = None
+        for child in children:
+            ucb_value = child.calculate_ucb()
+            if ucb_value > best_ucb_value:
+                best_ucb_value = ucb_value
+                best_node = child
+
+        return best_node
     
     def expand_node(self, selected_node):
         """
@@ -90,48 +106,94 @@ class StudentAI():
         Returns:
             Node: The newly created child node.
         """
-        expanded_node = self.Node(None, selected_node)
-        selected_node.add_child(expanded_node)
-        return expanded_node
+        moves = self.board.get_all_possible_moves(self.color)
+
+        # Filter out moves that have already been explored
+        explored_moves = {str(child.move) for child in selected_node.children}
+        unexplored_moves = [move for move in moves if str(move) not in explored_moves]
+
+        # No moves left to explore from this node
+        if not unexplored_moves:
+            return None  
+
+        # Randomly select one of the unexplored moves
+        move_to_expand = unexplored_moves[randint(0, len(unexplored_moves) - 1)]
+
+        # Create a new node for this move and add it to the selected node
+        new_node = self.Node(move_to_expand, selected_node)
+        selected_node.add_child(new_node)
+
+        return new_node
         
-    def simulate_game(self, expanded_node):
+    def simulate_game(self, current_node):
         """
         Simulates a game starting from the given node until a terminal state is reached.
 
-        Simulate ONE game until completion starting from the expanded node by choosing moves for both players
-        The choice of which moves to choose can be
-            1. Random
-            2. Idk
-
         Parameters:
-            expanded_node (Node): The node from which the game simulation starts.
+            current_node (Node): The node from which the game simulation starts.
 
         Returns:
-            list: A list representing the simulation route, containing tuples of nodes and their parents.
+            Node: The last node of the simulation
+            win(bool): Returns true if choosing expanded node resulted in a win
         """
-        simulation_route = [(expanded_node, expanded_node.parent)]
-        return simulation_route
+        cloned_board = deepcopy(self.board)
+        if current_node.move:
+            cloned_board.make_move(current_node.move, self.color)
+
+        current_player = self.opponent[self.color]
+
+        while True:
+            moves = cloned_board.get_all_possible_moves(current_player)
+            if not moves:  # No more moves available
+                break
+
+            # Randomly select a move
+            index = randint(0, len(moves) - 1)
+            inner_index = randint(0, len(moves[index]) - 1)
+            move = moves[index][inner_index]
+            cloned_board.make_move(move, current_player)
+
+            # Create a new node for this move and link it to the current node
+            new_node = self.Node(move, current_node)
+            current_node.add_child(new_node)
+            current_node = new_node  # Update current node
+
+            # Check for win/lose/tie condition
+            if cloned_board.is_win(current_player) != 0:
+                break
+
+            # Switch player
+            current_player = self.opponent[current_player]
+        win = True if current_player == self.color else False
+        return current_node, win
         
-    def propagate_back(self, simulation_route):
+    def propagate_back(self, start_node, outcome):
         """
         Backpropagates the simulation result through the tree.
 
-        After the simulation reaches a terminal state, backpropagate the result up through the tree along the path taken during the selection phase. Update the win/loss statistics and visit count of each node on this path
+        After the simulation reaches a terminal state, backpropagate the result up through the tree along the path taken during the selection phase.
+        Update the win/loss statistics and visit count of each node on this path.
+        win_counter is updated for both wins and ties
+        visit_counter is also updated
         Repeat process for a predetermined number of iterations
-        Calculate the best Upper Confidence Bound score and choose the highest
 
         Parameters:
-            simulation_route (list): The path of nodes taken during the simulation, represented as a list.
+            start_node (Node): The node in the tree to begin updating values from.
+            outcome (int): The outcome of the game for the AI player.
         """
-        return
+        current_node = start_node
+        
+        while current_node is not None:
+            self.update_stats(self, outcome)
+            current_node = current_node.parent
         
     def choose_move(self, children):
         """
         Chooses the best move to play from the given list of child nodes.
 
-        Calculate ucb of each root's child nodes and choose the largest
-        Move the tree root to it's subtree to reflect current board state and prune unreachable tree board states
-        Submit move
+        Calculate ucb of each root's child nodes and choose the largest.
+        Move the tree root to its subtree to reflect current board state and prune unreachable tree board states.
+        Submit move.
 
         Parameters:
             children (list): A list of child nodes to choose the best move from.
@@ -139,8 +201,21 @@ class StudentAI():
         Returns:
             Move: The move chosen as the best move to play.
         """
-        return children[randint(0,len(children)-1)]
+        if not children:
+            return None
 
+        best_ucb_value = float('-inf')
+        best_node = None
+
+        # Iterate through each child to find the one with the highest UCB value
+        for child in children:
+            ucb_value = child.calculate_ucb()
+            if ucb_value > best_ucb_value:
+                best_ucb_value = ucb_value
+                best_node = child
+
+        # Return the move associated with the node having the highest UCB value
+        return best_node.move
 
     def get_move(self,move):
         """
@@ -182,20 +257,21 @@ class StudentAI():
                 if str(move) not in existing_moves: # Note: child.move and move must be compared in their string representation as they have different addresses
                     self.root.add_child(self.Node(move, self.root))
     
-        # Selection Phase:
-        selected_node = self.select_node(self.root.children) # TODO
+        for i in range(8):
+            # Selection Phase:
+            selected_node = self.select_node(self.root.children)
 
-        # Expansion Phase:
-        expanded_node = self.expand_node(selected_node) # TODO
+            # Expansion Phase:
+            expanded_node = self.expand_node(selected_node)
 
-        # Simulation Phase:
-        simulation_route = self.simulate_game(expanded_node) # TODO
+            # Simulation Phase:
+            start_node, outcome = self.simulate_game(expanded_node)
 
-        # Backpropagation Phase:
-        self.propagate_back(simulation_route) # TODO
+            # Backpropagation Phase:
+            self.propagate_back(start_node, outcome)
 
         # Finalize move choice:
-        move = self.choose_move(self.root.children) # TODO
+        move = self.choose_move(self.root.children)
         for child in self.root.children:
             if str(move) == str(child.move):
                 self.root = child
