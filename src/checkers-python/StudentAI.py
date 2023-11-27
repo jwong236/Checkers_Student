@@ -3,38 +3,32 @@ from BoardClasses import Move
 from BoardClasses import Board
 
 import math
-from copy import deepcopy
 
-import logging
 
-# Basic configuration of the logging system
-logging.basicConfig(level=logging.DEBUG, filename='myapp.log', filemode='w',
-                    format='%(name)s - %(levelname)s - %(message)s')
 
 
 #The following part should be completed by students.
 #Students can modify anything except the class name and exisiting functions and varibles.
 class StudentAI():
     class Node():
-        def __init__(self, move, parent = None):
+        def __init__(self, move, player, parent = None):
             self.move = move
             self.children = []
             self.parent = parent
             self.win_count = 0
-            self.lose_count = 0
             self.visit_count = 0
+            # need to keep track of which player the node is for
+            self.player = player
 
         def add_child(self, child_node):
             """ Adds a child node to this node. """
             self.children.append(child_node)
 
-        def update_stats(self, win):
+        def update_stats(self, winning_player):
             """ Updates the win/loss statistics of the node."""
             self.visit_count += 1
-            if win:
+            if winning_player == self.player: # need to update correctly while backtracking given player who won
                 self.win_count += 1
-            else:
-                self.lose_count += 1
 
         def calculate_winrate(self):
             """ Calculates the win rate of the node. """
@@ -47,18 +41,14 @@ class StudentAI():
             if self.visit_count == 0:
                 return float('inf')
 
-            win_rate = self.calculate_winrate()
-            if self.parent is None or self.parent.visit_count == 0:
-                return win_rate
-
-            ucb = win_rate + exploration_param * math.sqrt(math.log(self.parent.visit_count) / self.visit_count)
+            ucb = self.calculate_winrate() + exploration_param * math.sqrt(math.log(self.parent.visit_count) / self.visit_count)
             return ucb
         
         def __str__(self):
             """ String representation of the Node. """
             parent_move = self.parent.move if self.parent else None
             return (f"Node(Move: {self.move}, Parent Move: {parent_move}, "
-                    f"Win Count: {self.win_count}, Lose Count: {self.lose_count}, "
+                    f"Win Count: {self.win_count}, Lose Count: {self.visit_count - self.lose_count}, "
                     f"Visit Count: {self.visit_count}, Children: {len(self.children)})")
         
     def __init__(self,col,row,p):
@@ -71,9 +61,11 @@ class StudentAI():
         self.opponent = {1:2,2:1}
         self.color = 2
 
+        # added root node for MCTS
         self.root = self.Node(None)
+        self.board_copy = self.board
     
-    def select_node(self, children):
+    def select_node(self, node):
         """
         Selects a child node from the given list of children based on a specified heuristic.
 
@@ -90,23 +82,23 @@ class StudentAI():
         Returns:
             Node: The selected child node.
         """
-        logging.info(f"Current root = {str(self.root)}")
-        # Find all unvisited children then select one randomly
-        unvisited = [child for child in children if child.visit_count == 0]
-        if unvisited:
-            return unvisited[randint(0, len(unvisited) - 1)]
 
         # If all children are visited, select the one with the highest UCB1 value
-        best_ucb_value = float('-inf')
-        best_node = None
-        for child in children:
-            ucb_value = child.calculate_ucb()
-            if ucb_value > best_ucb_value:
-                best_ucb_value = ucb_value
-                best_node = child
-
-        return best_node
+        current_node = node
+        while current_node.children != []:
+            best_ucb_value = float('-inf')
+            best_node = None
+            for child in current_node.children:
+                ucb_value = child.calculate_ucb()
+                if ucb_value > best_ucb_value:
+                    best_ucb_value = ucb_value
+                    best_node = child
+            current_node = best_node
+            self.board_copy.make_move(current_node.move, current_node.player)
+            
+        return current_node
     
+
     def expand_node(self, selected_node):
         """
         Expands the given node by adding a new child node to it.
@@ -123,32 +115,48 @@ class StudentAI():
         Returns:
             Node: The newly created child node.
         """
-        # Create a deep copy of the board and apply the move of the selected node to simulate its state
-        cloned_board = deepcopy(self.board)
-        if selected_node.move:
-            cloned_board.make_move(selected_node.move, self.color)
 
-        # Get all possible moves from this simulated state
-        simulated_moves = cloned_board.get_all_possible_moves(self.color)
 
-        # Filter out moves that have already been explored from the selected node
-        explored_moves = {str(child.move) for child in selected_node.children}
-        unexplored_moves = [move for sublist in simulated_moves for move in sublist if str(move) not in explored_moves]
+        # Get all possible moves from the selected move
+        expanded_moves = self.board_copy.get_all_possible_moves(self.opponent[selected_node.player])
 
-        # No moves left to explore from this node
-        if not unexplored_moves:
-            return None
+        # # Filter out moves that have already been explored from the selected node
+        # explored_moves = {str(child.move) for child in selected_node.children}
+        # unexplored_moves = [move for sublist in expanded_moves for move in sublist if str(move) not in explored_moves]
 
-        # Randomly select one of the unexplored moves
-        move_to_expand = unexplored_moves[randint(0, len(unexplored_moves) - 1)]
-
-        # Create a new node for this move and add it to the selected node
-        new_node = self.Node(move_to_expand, selected_node)
-        selected_node.add_child(new_node)
-
-        return new_node, cloned_board
+        # existing_moves = set()
+        # for child in self.root.children:
+        #     existing_moves.add(str(child.move))
+        # for piece in moves:
+        #     for move in piece:
+        #         if str(move) not in existing_moves: # Note: child.move and move must be compared in their string representation as they have different addresses
+        #             self.root.add_child(self.Node(move, self.root, player = self.color))
         
-    def simulate_game(self, current_node, simulated_board):
+        for move in expanded_moves:
+            selected_node.add_child(self.Node(move, selected_node, player = self.opponent[selected_node.player]))
+
+        # # No moves left to explore from this node
+        # if not unexplored_moves:
+        #     return None
+
+        # # Randomly select one of the unexplored moves
+        # move_to_expand = unexplored_moves[randint(0, len(unexplored_moves) - 1)]
+
+        best_ucb_value = float('-inf')
+        best_node = None
+        for child in selected_node.children:
+            ucb_value = child.calculate_ucb()
+            if ucb_value > best_ucb_value:
+                best_ucb_value = ucb_value
+                best_node = child
+
+        # # Create a new node for this move and add it to the selected node
+        # new_node = self.Node(move_to_expand, selected_node)
+        # selected_node.add_child(new_node)
+
+        return best_node
+        
+    def simulate_game(self, current_node):
         """
         Simulates a game starting from the given node until a terminal state is reached.
 
@@ -160,12 +168,12 @@ class StudentAI():
             win(bool): Returns true if choosing expanded node resulted in a win
         """
         if current_node.move:
-            simulated_board.make_move(current_node.move, self.color)
+            self.board_copy.make_move(current_node.move, self.color)
 
         current_player = self.opponent[self.color]
 
         while True:
-            moves = simulated_board.get_all_possible_moves(current_player)
+            moves = self.board_copy.get_all_possible_moves(current_player)
             if not moves:  # No more moves available
                 break
 
@@ -173,7 +181,7 @@ class StudentAI():
             index = randint(0, len(moves) - 1)
             inner_index = randint(0, len(moves[index]) - 1)
             move = moves[index][inner_index]
-            simulated_board.make_move(move, current_player)
+            self.board_copy.make_move(move, current_player)
 
             # Create a new node for this move and link it to the current node
             new_node = self.Node(move, current_node)
@@ -181,7 +189,7 @@ class StudentAI():
             current_node = new_node  # Update current node
 
             # Check for win/lose/tie condition
-            if simulated_board.is_win(current_player) != 0:
+            if self.board_copy.is_win(current_player) != 0:
                 break
 
             # Switch player
@@ -203,6 +211,7 @@ class StudentAI():
             start_node (Node): The node in the tree to begin updating values from.
             outcome (int): The outcome of the game for the AI player.
         """
+        # make sure to undo moves so we get back to original board state
         current_node = start_node
         
         while current_node is not None:
@@ -264,30 +273,42 @@ class StudentAI():
         """
         # Execute opponent's move onto the board, or initialize color for beginning of game
         if len(move) != 0:
-            self.board.make_move(move,self.opponent[self.color])
+            self.board_copy.make_move(move,self.opponent[self.color])
+            # make root node based off oponent's move
+            for child in self.root.children:
+                if str(move) == str(child.move):
+                    
+                    self.root = child
+                    
+                    if self.root.parent: 
+                        self.root.parent.children = []  # Clear children of the old root
+                        self.root.parent = None  # Remove parent reference from the new root
+                    break
         else:
             self.color = 1
 
         # Initialize tree, begin with the root node representing the current state of the board
         # Get all possible moves, get a set of root's current children, and add moves to tree only if it isn't already there
-        moves = self.board.get_all_possible_moves(self.color)
+        moves = self.board_copy.get_all_possible_moves(self.color)
         existing_moves = set()
         for child in self.root.children:
             existing_moves.add(str(child.move))
         for piece in moves:
             for move in piece:
                 if str(move) not in existing_moves: # Note: child.move and move must be compared in their string representation as they have different addresses
-                    self.root.add_child(self.Node(move, self.root))
+                    self.root.add_child(self.Node(move, self.root, player = self.color))
     
         for i in range(8):
+            self.self.board_copy = self.board
+
             # Selection Phase:
-            selected_node = self.select_node(self.root.children)
+            selected_node = self.select_node(self.root)
 
             # Expansion Phase:
-            expanded_node, expanded_board = self.expand_node(selected_node)
+            expanded_node = self.expand_node(selected_node)
 
             # Simulation Phase:
-            start_node, outcome = self.simulate_game(expanded_node, expanded_board)
+            start_node, outcome = self.simulate_game(expanded_node)
 
             # Backpropagation Phase:
             self.propagate_back(start_node, outcome)
@@ -296,13 +317,13 @@ class StudentAI():
         move = self.choose_move(self.root.children)
         for child in self.root.children:
             if str(move) == str(child.move):
+                
                 self.root = child
-                if self.root.parent:
+                
+                if self.root.parent: 
                     self.root.parent.children = []  # Clear children of the old root
                     self.root.parent = None  # Remove parent reference from the new root
                 break
-        logging.info(f"Making move {self.root}")
-        logging.info(f"")
         self.board.make_move(move, self.color)
         return move
     
